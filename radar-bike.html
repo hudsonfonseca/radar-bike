@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Radar de bicicletas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f3f1ec;--surface:#e7e4dc;--ink:#14213d;--muted:#5c6577;--accent:#e4572e;--accent-ink:#fff;--ok:#1f7a4d;--bad:#c1121f;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){--bg:#0f1624;--surface:#1a2438;--ink:#f1efe8;--muted:#9aa5ba;--accent:#ff7a4d;--accent-ink:#0f1624;--ok:#5fd39a;--bad:#ff6b6b}
+}
+:root[data-theme="dark"]{--bg:#0f1624;--surface:#1a2438;--ink:#f1efe8;--muted:#9aa5ba;--accent:#ff7a4d;--accent-ink:#0f1624;--ok:#5fd39a;--bad:#ff6b6b}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:Barlow,system-ui,-apple-system,"Segoe UI",sans-serif;max-width:520px;margin:0 auto;padding:14px 18px 24px}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs button{flex:1;background:var(--surface);color:var(--muted)}
+.tabs button.on{background:var(--ink);color:var(--bg)}
+button{font:600 17px Barlow,system-ui,sans-serif;border:0;border-radius:12px;padding:12px;cursor:pointer;min-height:48px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+#cam{position:relative;aspect-ratio:16/9;background:#000;border-radius:14px;overflow:hidden}
+#v{width:100%;height:100%;object-fit:cover;display:block}
+.gate{position:absolute;top:0;bottom:0;width:3px;margin-left:-1px;background:#ffd400;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+.gate.hit{background:#ff3b30;width:6px}
+.gate i{position:absolute;top:6px;left:8px;font:800 18px "Barlow Condensed",sans-serif;font-style:normal;color:#ffd400;text-shadow:0 0 3px #000}
+#camMsg{position:absolute;inset:0;display:none;overflow-y:auto;text-align:center;color:#fff;padding:14px;font-size:15px;background:rgba(0,0,0,.82)}
+#camMsg>div{margin:auto;width:100%}
+#camMsg p{margin:0 0 10px}
+#camMsg .cb{display:block;width:100%;max-width:280px;margin:0 auto 8px;background:var(--accent);color:var(--accent-ink);min-height:46px;font-size:18px}
+#camMsg #camOpen{background:#fff;color:#000}
+#camMsg #camHelp{font-size:13px;line-height:1.4;opacity:.9;margin:6px 0 0}
+#status{margin:10px 0 0;color:var(--muted);font-size:15px;text-align:center;min-height:22px}
+.result{text-align:center;margin:10px 0 6px}
+#spd{font-family:"Barlow Condensed","Arial Narrow",Impact,sans-serif;font-weight:800;font-size:min(36vw,160px);line-height:.95;font-variant-numeric:tabular-nums}
+#spd.over{color:var(--bad)}
+.unit{color:var(--muted);font-size:20px}
+#flag{min-height:24px;font-weight:600;color:var(--bad)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+label{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--muted)}
+input[type=number]{font:600 20px Barlow,system-ui,sans-serif;padding:10px;border-radius:10px;border:2px solid var(--surface);background:var(--surface);color:var(--ink);width:100%}
+input[type=range]{width:100%}
+#tap{display:none;width:100%;background:var(--accent);color:var(--accent-ink);min-height:84px;font-size:20px;margin:6px 0 10px}
+#hist{list-style:none;margin:0;padding:0}
+#hist li{display:flex;justify-content:space-between;background:var(--surface);border-radius:10px;padding:10px 14px;margin-bottom:6px;font-variant-numeric:tabular-nums}
+#hist li.over b{color:var(--bad)}
+.pt{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#00c2ff;border:2px solid #fff;display:none;pointer-events:none}
+#cam.cal{cursor:crosshair;outline:3px solid #00c2ff}
+#calBtn{background:var(--surface);color:var(--ink)}
+#calBtn.on{background:#00c2ff;color:#000}
+#calMsg{font-size:14px;color:var(--muted);margin:0 0 12px;min-height:20px}
+.how{font-size:14px;color:var(--muted);line-height:1.45;margin:14px 0}
+.top{display:flex;justify-content:space-between;color:var(--muted);font-size:15px;margin:8px 0}
+</style>
+</head>
+<body>
+<div class="tabs" role="tablist">
+  <button id="tCam" class="on" role="tab">Câmera (automático)</button>
+  <button id="tMan" role="tab">Manual (toque)</button>
+</div>
+
+<div id="cam">
+  <video id="v" playsinline muted autoplay></video>
+  <div class="gate" id="gA" style="left:30%"><i>A</i></div>
+  <div class="gate" id="gB" style="left:70%"><i>B</i></div>
+  <div class="pt" id="p1"></div><div class="pt" id="p2"></div>
+  <div id="camMsg"><div><p id="camTxt"></p><button id="camBtn" class="cb">Ativar câmera</button><button id="camOpen" class="cb" style="display:none">Abrir em nova aba</button><p id="camHelp"></p></div></div>
+</div>
+<button id="tap">Toque quando a bike cruzar a 1ª marca</button>
+<p id="status">Iniciando câmera...</p>
+
+<section class="result">
+  <div id="spd">--</div>
+  <div class="unit">km/h</div>
+  <div id="flag"></div>
+</section>
+
+<div class="row">
+  <label>Distância entre as marcas (m)<input id="dist" type="number" inputmode="decimal" min="1" step="0.5" value="10"></label>
+  <label>Limite de velocidade (km/h)<input id="lim" type="number" inputmode="decimal" min="1" value="25"></label>
+</div>
+
+<div id="camCtl">
+  <div class="row">
+    <label>Posição da linha A<input id="sA" type="range" min="5" max="95" value="30"></label>
+    <label>Posição da linha B<input id="sB" type="range" min="5" max="95" value="70"></label>
+  </div>
+  <div class="row">
+    <label>Tamanho do objeto de referência (m)<input id="refLen" type="number" inputmode="decimal" min="0.1" step="0.1" value="1"></label>
+    <button id="calBtn" style="align-self:end">Calibrar pela imagem</button>
+  </div>
+  <p id="calMsg"></p>
+  <label>Sensibilidade<input id="sens" type="range" min="1" max="10" value="6"></label>
+</div>
+
+<div class="top"><span>Medições: <b id="cnt">0</b></span><span>Máxima: <b id="max">--</b> km/h</span></div>
+<ul id="hist"></ul>
+
+<p class="how">Como usar: apoie o celular parado, de lado para o caminho. Opção 1: meça a distância no chão, digite acima e alinhe as linhas A e B com as marcas. Opção 2 (calibrar pela imagem): deite no chão um objeto de tamanho conhecido (trena, vara, folha A4), na mesma linha por onde as bikes passam, toque em Calibrar pela imagem, toque nas duas pontas do objeto e depois mova as linhas A e B para onde quiser: a distância é calculada sozinha. Quanto maior a distância e mais firme o celular, mais preciso o resultado.</p>
+
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var video=$('v'),proc=document.createElement('canvas');proc.width=160;proc.height=90;
+  var ctx=proc.getContext('2d',{willReadFrequently:true});
+  var W=160,H=90,N=W*H;
+  var prev=null,stream=null,raf=null,mode='cam';
+  var gates=[{el:$('gA'),pos:30,on:false},{el:$('gB'),pos:70,on:false}];
+  var first=null,cool=0,count=0,maxV=0;
+
+  function fmt(n,d){return n.toFixed(d).replace('.',',')}
+  function pad(n){return n<10?'0'+n:''+n}
+  function setSt(t){$('status').textContent=t}
+
+  function finish(ms){
+    var dist=parseFloat(($('dist').value||'').replace(',','.'))||0;
+    if(ms<40||dist<=0)return;
+    var kmh=dist/(ms/1000)*3.6;
+    var lim=parseFloat(($('lim').value||'').replace(',','.'))||0;
+    var over=lim>0&&kmh>lim;
+    count++;if(kmh>maxV)maxV=kmh;
+    $('spd').textContent=fmt(kmh,1);
+    $('spd').className=over?'over':'';
+    $('flag').textContent=over?'Acima do limite':'';
+    $('cnt').textContent=count;$('max').textContent=fmt(maxV,1);
+    var d=new Date(),li=document.createElement('li');
+    if(over)li.className='over';
+    li.innerHTML='<span>'+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())+'</span><b>'+fmt(kmh,1)+' km/h</b>';
+    var h=$('hist');h.insertBefore(li,h.firstChild);
+    while(h.children.length>10)h.removeChild(h.lastChild);
+    setSt(mode==='cam'?'Medido. Aguardando próxima bike...':'Medido.');
+  }
+
+  function edge(i,t){
+    if(t<cool)return;
+    if(first&&t-first.t>5000)first=null;
+    if(!first){first={i:i,t:t};setSt('Linha '+(i?'B':'A')+' cruzada...');return;}
+    if(first.i===i)return;
+    finish(t-first.t);first=null;cool=t+1500;
+  }
+
+  function loop(){
+    raf=requestAnimationFrame(loop);
+    if(video.readyState<2)return;
+    var now=performance.now();
+    ctx.drawImage(video,0,0,W,H);
+    var d=ctx.getImageData(0,0,W,H).data,g=new Uint8Array(N),i;
+    for(i=0;i<N;i++){var k=i*4;g[i]=(d[k]*77+d[k+1]*150+d[k+2]*29)>>8;}
+    if(prev){
+      var tot=0;
+      for(i=0;i<N;i++){if(Math.abs(g[i]-prev[i])>25)tot++;}
+      var glob=tot/N;
+      var thr=0.22-parseInt($('sens').value,10)*0.02;
+      for(var gi=0;gi<2;gi++){
+        var gt=gates[gi],cx=Math.round(gt.pos/100*W),c=0;
+        for(var y=0;y<H;y++){for(var x=cx-4;x<=cx+4;x++){
+          if(x>=0&&x<W&&Math.abs(g[y*W+x]-prev[y*W+x])>25)c++;
+        }}
+        var act=(c/(H*9))>thr&&glob<0.6;
+        if(act&&!gt.on)edge(gi,now);
+        gt.on=act;gt.el.classList.toggle('hit',act);
+      }
+      if(first&&now-first.t>5000){first=null;setSt('Aguardando passagem...');}
+    }
+    prev=g;
+  }
+
+  function startCam(){
+    var msg=$('camMsg');msg.style.display='none';
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){camFail('Este navegador não permite acessar a câmera.');return;}
+    navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:640},height:{ideal:360}},audio:false})
+    .then(function(s){
+      stream=s;video.srcObject=s;prev=null;first=null;
+      video.play().catch(function(){});
+      setSt('Aguardando passagem...');
+      if(!raf)loop();
+    }).catch(function(err){
+      var n=err&&err.name,t;
+      if(n==='NotAllowedError'||n==='SecurityError')t='A câmera está bloqueada para este site.';
+      else if(n==='NotFoundError'||n==='OverconstrainedError')t='Nenhuma câmera encontrada neste aparelho.';
+      else if(n==='NotReadableError')t='A câmera está em uso por outro app. Feche-o e tente de novo.';
+      else t='Não foi possível abrir a câmera.';
+      camFail(t);
+    });
+  }
+  function camFail(t){
+    showPrompt(t,true);
+  }
+  function stopCam(){
+    if(raf){cancelAnimationFrame(raf);raf=null;}
+    if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null;}
+    video.srcObject=null;prev=null;
+  }
+
+  function setMode(m){
+    mode=m;first=null;
+    $('tCam').className=m==='cam'?'on':'';$('tMan').className=m==='man'?'on':'';
+    $('cam').style.display=m==='cam'?'block':'none';
+    $('camCtl').style.display=m==='cam'?'block':'none';
+    $('tap').style.display=m==='man'?'block':'none';
+    if(m==='cam'){initCam();}
+    else{stopCam();setSt('Toque no botão a cada marca.');$('tap').textContent='Toque quando a bike cruzar a 1ª marca';}
+  }
+  $('tCam').addEventListener('click',function(){setMode('cam')});
+  $('tMan').addEventListener('click',function(){setMode('man')});
+
+  $('tap').addEventListener('click',function(){
+    var t=performance.now();
+    if(!first){first={t:t};$('tap').textContent='Toque quando cruzar a 2ª marca';setSt('Cronometrando...');}
+    else{finish(t-first.t);first=null;$('tap').textContent='Toque quando a bike cruzar a 1ª marca';}
+  });
+
+  function bindSlider(id,idx){
+    $(id).addEventListener('input',function(){
+      gates[idx].pos=parseInt(this.value,10);gates[idx].el.style.left=this.value+'%';updateDist();
+    });
+  }
+  var pctPerM=0,calOn=false,pts=[];
+  function updateDist(){
+    if(pctPerM>0){
+      var d=Math.abs(gates[1].pos-gates[0].pos)/pctPerM;
+      $('dist').value=d.toFixed(1);
+      $('calMsg').textContent='Calibrado: distância entre A e B = '+fmt(d,1)+' m.';
+    }
+  }
+  $('dist').addEventListener('input',function(){pctPerM=0;$('calMsg').textContent='Distância digitada manualmente.';});
+  $('calBtn').addEventListener('click',function(){
+    calOn=!calOn;pts=[];
+    $('p1').style.display='none';$('p2').style.display='none';
+    $('cam').className=calOn?'cal':'';
+    $('calBtn').className=calOn?'on':'';
+    $('calBtn').textContent=calOn?'Cancelar calibração':'Calibrar pela imagem';
+    $('calMsg').textContent=calOn?'Toque na 1ª ponta do objeto de referência.':'';
+  });
+  $('cam').addEventListener('click',function(e){
+    if(!calOn)return;
+    var r=this.getBoundingClientRect();
+    var x=(e.clientX-r.left)/r.width*100,y=(e.clientY-r.top)/r.height*100;
+    var p=$(pts.length?'p2':'p1');
+    p.style.left=x+'%';p.style.top=y+'%';p.style.display='block';
+    pts.push(x);
+    if(pts.length===1){$('calMsg').textContent='Agora toque na outra ponta do objeto.';return;}
+    var len=parseFloat(($('refLen').value||'').replace(',','.'))||0;
+    var span=Math.abs(pts[1]-pts[0]);
+    calOn=false;$('cam').className='';$('calBtn').className='';$('calBtn').textContent='Calibrar pela imagem';
+    if(len<=0||span<2){pctPerM=0;$('calMsg').textContent='Não deu certo: toque em duas pontas bem separadas e informe o tamanho do objeto.';return;}
+    pctPerM=span/len;
+    updateDist();
+  });
+  bindSlider('sA',0);bindSlider('sB',1);
+
+  document.addEventListener('visibilitychange',function(){
+    if(document.hidden){if(mode==='cam')stopCam();}
+    else if(mode==='cam'&&!stream){initCam();}
+  });
+  function inFrame(){try{return window.self!==window.top;}catch(e){return true;}}
+  function helpText(){
+    var ua=navigator.userAgent||'',t;
+    if(/iPhone|iPad|iPod/.test(ua))t='No iPhone: toque em "aA" na barra de endereço do Safari, depois Ajustes do Site > Câmera > Permitir. Volte e toque em Tentar novamente.';
+    else if(/Android/.test(ua))t='No Android: toque no cadeado ao lado do endereço, depois Permissões > Câmera > Permitir. Volte e toque em Tentar novamente.';
+    else t='Clique no cadeado ao lado do endereço, permita a Câmera e clique em Tentar novamente.';
+    if(inFrame())t+=' Se continuar bloqueada, abra o radar em uma nova aba.';
+    return t;
+  }
+  function showPrompt(t,blocked){
+    $('camTxt').textContent=t;
+    $('camBtn').textContent=blocked?'Tentar novamente':'Ativar câmera';
+    $('camOpen').style.display=(blocked&&inFrame())?'block':'none';
+    $('camHelp').textContent=blocked?helpText():'';
+    $('camMsg').style.display='flex';
+    setSt(blocked?'Câmera bloqueada ou indisponível.':'Toque em Ativar câmera.');
+  }
+  function initCam(){
+    var ask=function(){showPrompt('Para medir a velocidade, o app precisa usar a câmera.',false);};
+    if(navigator.permissions&&navigator.permissions.query){
+      navigator.permissions.query({name:'camera'}).then(function(p){
+        if(p.state==='granted')startCam();
+        else if(p.state==='denied')showPrompt('A câmera está bloqueada para este site.',true);
+        else ask();
+        p.onchange=function(){if(p.state==='granted'&&mode==='cam'&&!stream)startCam();};
+      }).catch(ask);
+    }else ask();
+  }
+  $('camBtn').addEventListener('click',startCam);
+  $('camOpen').addEventListener('click',function(){window.open(location.href,'_blank');});
+  setMode('cam');
+})();
+</script>
+</body>
+</html>
